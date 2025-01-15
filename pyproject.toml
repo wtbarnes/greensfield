@@ -1,0 +1,154 @@
+[build-system]
+requires = [
+  "setuptools>=62.1",
+  "setuptools_scm[toml]>=6.2",
+  "wheel",]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "greensfield"
+description = "Solar magnetic field extrapolations with Green's functions"
+requires-python = ">=3.10"
+readme = { file = "README.rst", content-type = "text/x-rst" }
+license = { file = "licenses/LICENSE.rst" }
+authors = [
+  { name = "Will Barnes", email = "will.t.barnes@gmail.com" },
+]
+dependencies = [
+  "numba",
+  "sunpy[map]",
+  "streamtracer",
+  "xarray"
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = [
+  "tox",
+  "flake8",
+  "pytest",
+  "pytest-astropy",
+  "pytest-cov",
+]
+docs = [
+  "pydata-sphinx-theme",
+  "sphinx-automodapi",
+  "sphinx-design",
+  "sphinx-gallery",
+  "sphinx",
+  "sphinx-astropy",
+  "sphinxcontrib-bibtex",
+]
+dev = ["greensfield[test,docs]"]
+
+[tool.setuptools]
+packages = ["greensfield"]
+
+[tool.setuptools_scm]
+write_to = "greensfield/version.py"
+
+[tool.pytest.ini_options]
+testpaths = [
+  "greensfield",
+  "docs",
+]
+norecursedirs = [
+  "docs/_build",
+  "docs/generated",
+]
+doctest_plus = "enabled"
+text_file_format = "rst"
+addopts = "--doctest-rst"
+
+[tool.coverage.run]
+omit = [
+ "greensfield/conftest.py",
+ "greensfield/tests/*",
+ "greensfield/*/tests/*",
+ "greensfield/version*",
+ "*/greensfield/conftest.py",
+ "*/greensfield/tests/*",
+ "*/greensfield/*/tests/*",
+ "*/greensfield/extern/*",
+ "*/greensfield/version*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  # Have to re-enable the standard pragma
+  "pragma: no cover",
+  # Don't complain about packages we have installed
+  "except ImportError",
+  # Don't complain if tests don't hit assertions
+  "raise AssertionError",
+  "raise NotImplementedError",
+  # Ignore branches that don't pertain to this version of Python
+  "pragma: py{ignore_python_version}",
+  # Don't complain about IPython completion helper
+  "def _ipython_key_completions_",
+]
+
+[tool.isort]
+line_length = 88
+wrap_length = 80
+sections = ["FUTURE", "STDLIB", "FIRSTPARTY", "LOCALFOLDER"]
+known_first_party = ["greensfield", ]
+default_section = "STDLIB"
+multi_line_output = 3
+use_parentheses = true
+include_trailing_comma = true
+force_alphabetical_sort_within_sections = true
+honor_noqa = true
+lines_between_types = 1
+
+[tool.codespell]
+skip = "*.fts,*.fits,venv,*.pro,*.bib,*.asdf,*.json"
+ignore-words-list = "te,emiss"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 110
+exclude=[
+  ".git,",
+  "__pycache__",
+  "build",
+  "greensfield/version.py",
+]
+show-fixes = true
+output-format = "full"
+
+lint.select = [
+  "E",
+  "F",
+  "W",
+  "UP",
+  "PT",
+  #"RET",
+  #"TID",
+]
+lint.extend-ignore = [
+  # pycodestyle (E, W)
+  "E501",  # LineTooLong                             # TODO! fix
+  "E741",  # Ambiguous variable name
+
+  # pytest (PT)
+  "PT001",  # Always use pytest.fixture()
+  "PT004",  # Fixtures which don't return anything should have leading _
+  "PT007",  # Parametrize should be lists of tuples  # TODO! fix
+  "PT011",  # Too broad exception assert             # TODO! fix
+  "PT023",  # Always use () on pytest decorators
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Part of configuration, not a package.
+"setup.py" = ["INP001"]
+"conftest.py" = ["INP001"]
+# implicit-namespace-package. The examples are not a package.
+"docs/*.py" = ["INP001"]
+# Module level imports do not need to be at the top of a file here
+"docs/conf.py" = ["E402"]
+"__init__.py" = ["E402", "F401", "F403"]
+"test_*.py" = ["B011", "D", "E402", "S101"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
