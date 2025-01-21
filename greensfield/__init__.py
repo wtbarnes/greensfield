@@ -4,4 +4,8 @@ Green's function methods.
 """
 from .version import version as __version__
 
-__all__ = []
+from greensfield.models import ObliqueSchmidtExtrapolator
+
+__all__ = [
+    'ObliqueSchmidtExtrapolator'
+]
