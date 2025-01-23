@@ -10,7 +10,7 @@ from streamtracer import StreamTracer, VectorGrid
 from sunpy.coordinates import Heliocentric, PlanarScreen
 from sunpy.coordinates.utils import solar_angle_equivalency
 
-from greensfield.algorithms import oblique_schmidt, magnetic_field_current_free
+from greensfield.algorithms import magnetic_field_current_free, oblique_schmidt
 from greensfield.util import make_boundary_magnetogram
 
 __all__ = ['ExtrapolatorBase', 'ObliqueSchmidtExtrapolator']
@@ -55,7 +55,7 @@ class ExtrapolatorBase:
     @property
     def hcc_frame(self):
         return Heliocentric(observer=self.boundary_magnetogram.observer_coordinate)
-    
+
     @u.quantity_input(sale_z='Mm')
     def _get_scale(self, scale_z=None) -> u.Mm:
         scale = (u.Quantity(self.boundary_magnetogram.scale) * 1*u.pix).to(
@@ -66,7 +66,7 @@ class ExtrapolatorBase:
             scale_z = scale.min()
         scale = np.append(scale, scale_z)
         return scale
-    
+
     @u.quantity_input(extent_z='Mm')
     def _get_shape(self, extent_z=None):
         shape = np.round(
@@ -90,7 +90,7 @@ class ExtrapolatorBase:
         llc = self.lower_left_corner
         grid = [g+o for g,o in zip(grid, llc.cartesian.xyz, strict=True)]
         return grid
-    
+
     @property
     def _xarray_coords(self):
         names = ['x', 'y', 'z']
@@ -158,7 +158,7 @@ class ObliqueSchmidtExtrapolator(ExtrapolatorBase):
 
     Parameters
     ----------
-    """ 
+    """
 
     @property
     def l_hat(self):
