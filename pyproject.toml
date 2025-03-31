@@ -38,6 +38,7 @@ docs = [
   "sphinx",
   "sphinx-astropy",
   "sphinxcontrib-bibtex",
+  "sphinx-copybutton",
 ]
 dev = ["greensfield[test,docs]"]
 

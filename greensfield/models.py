@@ -22,12 +22,30 @@ class ExtrapolatorBase:
 
     Parameters
     ----------
-    magnetogram
-    tangent_coord
-    corners
-    resample_factor
-    scale_z
-    extent_z
+    magnetogram: `~sunpy.map.GenericMap`
+        Map of photospheric magnetogram. This will be used to calculate the
+        lower boundary condition. In general, it is a good idea to make this
+        a bit larger than the field of view specified by ``corners`` so as to
+        avoid missing pixels when reprojecting.
+    tangent_coord: `~astropy.coordinates.SkyCoord`
+        Coordinate at which the lower boundary is tangent to the spherical
+        surface of the Sun. For AR-level extrapolations, this is typically
+        the center of the AR.
+    corners: `~astropy.coordinates.SkyCoord`
+        Corners defining the field of view of the lower boundary. These are
+        used to extract the lower boundary from ``magnetogram``.
+    resample_factor: `float`, optional
+        Factor by which to reduce the resolution of the ``magnetogram``. This is
+        often needed in practice in order to make the field extrapolation
+        calculation tractable. Should be between 0 and 1.
+    scale_z: `~astropy.units.Quantity`, optional
+        Resolution in the vertical (perpendicular to the bottom boundary) direction.
+        If not specified, this is calculated from the minimum resolution of the lower
+        boundary. Note that this is the (Cartesian) width of a grid cell rather than
+        an angular resolution.
+    extent_z: `~astropy.units.Quantity`, optional
+        The vertical extent of the volume in which the extrapolated field is calculated.
+        If not specified, this defaults to the maximum extent of the lower boundary.
     """
 
     def __init__(self,
@@ -54,6 +72,7 @@ class ExtrapolatorBase:
 
     @property
     def hcc_frame(self):
+        "Heliocentric cartesian (HCC) coordinate frame"
         return Heliocentric(observer=self.boundary_magnetogram.observer_coordinate)
 
     @u.quantity_input(sale_z='Mm')
@@ -129,6 +148,16 @@ class ExtrapolatorBase:
             Fraction of maximum value of boundary magnetogram below which seed
             points will be placed. If ``seed_points`` are specified explicitly,
             this will be ignored.
+        tracer: `~streamtracer.StreamTracer`, optional
+            Kind of tracer used to trace field lines through the magnetic field
+            volume from ``seeds``. If not specified, `~streamtracer.StreamTracer`
+            with a max number of steps of 100000 and a step size of 0.01 is used.
+
+        Returns
+        -------
+        fieldlines: `list`
+            List of `~astropy.coordinates.SkyCoord` objects describing the traced
+            fieldlines.
         """
         # create seed points
         if seeds is None:
@@ -149,19 +178,19 @@ class ExtrapolatorBase:
                      direction=0)
         fieldlines = [SkyCoord(*sl.T, unit=ds_B.x.unit, frame=self.hcc_frame) for sl in tracer.xs]
         # TODO: drop fieldlines back down to surface in z
+        # TODO: extract values of magnetic field at points along the loop
         return fieldlines
 
 
 class ObliqueSchmidtExtrapolator(ExtrapolatorBase):
-    """
-    Extrapolate magnetic field using the oblique Schmidt method of Sakurai (1981).
-
-    Parameters
-    ----------
-    """
 
     @property
     def l_hat(self):
+        """
+        Unit vector indicating the surface normal of the lower boundary of the computational domain.
+        This is the :math:`z`-axis of the HCC coordinate system expressed in an HCC coordinate system
+        defined by the observer.
+        """
         l_hat = self.magnetogram.observer_coordinate.transform_to(self.hcc_frame).cartesian
         l_hat -= CartesianRepresentation(0,0,1) * self.boundary_magnetogram.rsun_meters
         l_hat /= l_hat.norm()
@@ -169,7 +198,8 @@ class ObliqueSchmidtExtrapolator(ExtrapolatorBase):
 
     def extrapolate(self):
         """
-        Extrapolate magnetic field from lower boundary
+        Extrapolate magnetic field using the oblique Schmidt method :cite:p:`schmidt_observable_1964`
+        as described in :cite:t:`sakurai_greens_1982`.
 
         Returns
         -------
