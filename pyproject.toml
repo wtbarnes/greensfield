@@ -16,7 +16,7 @@ authors = [
 ]
 dependencies = [
   "numba",
-  "sunpy[map]",
+  "sunpy[map]>=6.1",
   "streamtracer",
   "xarray"
 ]
