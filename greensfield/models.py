@@ -2,18 +2,40 @@
 Models for field extrapolation
 """
 import astropy.units as u
+import dataclasses
 import numpy as np
 import xarray
 
 from astropy.coordinates import CartesianRepresentation, SkyCoord
 from streamtracer import StreamTracer, VectorGrid
-from sunpy.coordinates import Heliocentric, PlanarScreen
+from sunpy.coordinates import Heliocentric, HeliographicStonyhurst, PlanarScreen
 from sunpy.coordinates.utils import solar_angle_equivalency
 
 from greensfield.algorithms import magnetic_field_current_free, oblique_schmidt
-from greensfield.util import make_boundary_magnetogram
+from greensfield.util import get_coordinates_above_threshold, make_boundary_magnetogram
 
-__all__ = ['ExtrapolatorBase', 'ObliqueSchmidtExtrapolator']
+__all__ = ['Fieldline', 'ExtrapolatorBase', 'ObliqueSchmidtExtrapolator']
+
+
+@dataclasses.dataclass
+class Fieldline:
+    coordinate: SkyCoord
+    field_strength: u.Quantity[u.G]
+
+    @property
+    def is_closed(self):
+        r = self.coordinate.transform_to('heliographic_stonyhurst').radius
+        # This is approximately 1 Mm and is set as such to avoid classifying
+        # short, open loops as closed loops. Note that any loops with lengths
+        # shorter than tol*Rsun will be classified as closed even if they
+        # are fully open.
+        tol = 0.002
+        return np.fabs(np.diff(r[[0,-1]])).to_value('Rsun') < tol
+
+    @property
+    @u.quantity_input
+    def length(self) -> u.Mm:
+        return self.coordinate[:-1].separation_3d(self.coordinate[1:]).sum()
 
 
 class ExtrapolatorBase:
@@ -63,6 +85,14 @@ class ExtrapolatorBase:
                                                               resample_factor)
         self.scale = self._get_scale(scale_z)
         self.shape = self._get_shape(extent_z)
+
+    @property
+    def tangent_coord(self):
+        return self._tangent_coord
+
+    @tangent_coord.setter
+    def tangent_coord(self, value):
+        self._tangent_coord = value.transform_to(HeliographicStonyhurst)
 
     @property
     def _planar_screen(self):
@@ -159,27 +189,48 @@ class ExtrapolatorBase:
             List of `~astropy.coordinates.SkyCoord` objects describing the traced
             fieldlines.
         """
-        # create seed points
+        # Create seed points
         if seeds is None:
-            threshold = seed_threshold*np.nanmax(self.boundary_magnetogram.data)
-            iy, ix = np.where(self.boundary_magnetogram.data<threshold)
-            seeds = self.boundary_magnetogram.wcs.array_index_to_world(iy, ix)
+            seeds = get_coordinates_above_threshold(self.boundary_magnetogram, seed_threshold)
         with self._planar_screen:
             seeds = seeds.transform_to(self.hcc_frame)
-        # build tracing grid
+        # Build tracing grid
         ds_B = ds['magnetic_field']
         vg = VectorGrid(ds_B.data,
                         grid_coords=[ds_B.x.data, ds_B.y.data, ds_B.z.data])
-        # trace
+        # Trace
         if tracer is None:
             tracer = StreamTracer(100000, 0.01)
         tracer.trace(seeds.cartesian.xyz.T.to_value(ds_B.x.unit),
                      vg,
                      direction=0)
-        fieldlines = [SkyCoord(*sl.T, unit=ds_B.x.unit, frame=self.hcc_frame) for sl in tracer.xs]
-        # TODO: drop fieldlines back down to surface in z
-        # TODO: extract values of magnetic field at points along the loop
+        # Construct fieldlines
+        B_total = np.sqrt((ds_B**2).sum(dim='component'))
+        B_total.attrs['unit'] = ds_B.unit
+        field_strengths = [self._get_field_strength(sl, B_total) for sl in tracer.xs]
+        R_surf = self.tangent_coord.radius.to_value(ds_B.x.unit)
+        coords_corrected = [self._correct_field_line_coordinate(sl, R_surf)
+                            for sl in tracer.xs]
+        coordinates = [SkyCoord(*coord, unit=ds_B.x.unit, frame=self.hcc_frame)
+                       for coord in coords_corrected]
+        fieldlines = [Fieldline(coordinate=coord, field_strength=fs)
+                      for coord, fs in zip(coordinates, field_strengths)]
+
         return fieldlines
+
+    def _get_field_strength(self, coord, field):
+        x=xarray.DataArray(coord[:,0], dims='s')
+        y=xarray.DataArray(coord[:,1], dims='s')
+        z=xarray.DataArray(coord[:,2], dims='s')
+        field_s = field.interp(x=x, y=y, z=z)
+        return u.Quantity(field_s.values, field.unit)
+
+    def _correct_field_line_coordinate(self, coord, r_surface):
+        """
+        Drop the z-coordinate from the tangent boundary plane to the solar surface.
+        """
+        delta = r_surface - np.sqrt(r_surface**2 - coord[:,0]**2 - coord[:,1]**2)
+        return np.array([coord[:,0], coord[:,1], coord[:,2]-delta])
 
 
 class ObliqueSchmidtExtrapolator(ExtrapolatorBase):
