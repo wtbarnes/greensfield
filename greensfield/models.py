@@ -24,18 +24,17 @@ class Fieldline:
 
     @property
     def is_closed(self):
-        r = self.coordinate.transform_to('heliographic_stonyhurst').radius
         # This is approximately 1 Mm and is set as such to avoid classifying
         # short, open loops as closed loops. Note that any loops with lengths
-        # shorter than tol*Rsun will be classified as closed even if they
+        # shorter than tol will be classified as closed even if they
         # are fully open.
-        tol = 0.002
-        return np.fabs(np.diff(r[[0,-1]])).to_value('Rsun') < tol
+        tol = 0.002 * u.Rsun
+        return np.fabs(np.diff(self.coordinate.spherical.distance[[0,-1]])) < tol
 
     @property
     @u.quantity_input
     def length(self) -> u.Mm:
-        return self.coordinate[:-1].separation_3d(self.coordinate[1:]).sum()
+        return self.coordinate[1:].separation_3d(self.coordinate[:-1]).sum()
 
 
 class ExtrapolatorBase:
@@ -163,8 +162,8 @@ class ExtrapolatorBase:
     def extrapolate(self):
         raise NotImplementedError
 
-    def trace(self, ds, seeds=None, seed_threshold=-1e-3, tracer=None):
-        """
+    def trace(self, ds, seeds=None, seed_threshold=-1e-3, step_size=0.1, max_steps=None):
+        r"""
         Trace fieldlines through extrapolated volume.
 
         Parameters
@@ -178,10 +177,13 @@ class ExtrapolatorBase:
             Fraction of maximum value of boundary magnetogram below which seed
             points will be placed. If ``seed_points`` are specified explicitly,
             this will be ignored.
-        tracer: `~streamtracer.StreamTracer`, optional
-            Kind of tracer used to trace field lines through the magnetic field
-            volume from ``seeds``. If not specified, `~streamtracer.StreamTracer`
-            with a max number of steps of 100000 and a step size of 0.01 is used.
+        step_size: `float`, optional
+            Step size as a fraction of cell size. For more information, see
+            `~streamtracer.StreamTracer`.
+        max_steps: `int`, optional
+            Maximum number of steps allowed per fieldline. If not specified,
+            maximum number of steps of :math:`4\max{(n_x,n_y,n_z)}/ds` is used,
+            where :math:`ds` is ``step_size``.
 
         Returns
         -------
@@ -199,8 +201,9 @@ class ExtrapolatorBase:
         vg = VectorGrid(ds_B.data,
                         grid_coords=[ds_B.x.data, ds_B.y.data, ds_B.z.data])
         # Trace
-        if tracer is None:
-            tracer = StreamTracer(100000, 0.01)
+        if max_steps is None:
+            max_steps = int(np.ceil(4*self.shape.max()/step_size))
+        tracer = StreamTracer(max_steps, step_size)
         tracer.trace(seeds.cartesian.xyz.T.to_value(ds_B.x.unit),
                      vg,
                      direction=0)
