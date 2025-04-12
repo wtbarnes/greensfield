@@ -162,7 +162,7 @@ class ExtrapolatorBase:
     def extrapolate(self):
         raise NotImplementedError
 
-    def trace(self, ds, seeds=None, seed_threshold=-1e-3, step_size=0.1, max_steps=None):
+    def trace(self, ds, seeds=None, seed_threshold=-1e-3, step_size=0.1, max_steps=None, filter_near_boundaries=True):
         r"""
         Trace fieldlines through extrapolated volume.
 
@@ -184,6 +184,9 @@ class ExtrapolatorBase:
             Maximum number of steps allowed per fieldline. If not specified,
             maximum number of steps of :math:`4\max{(n_x,n_y,n_z)}/ds` is used,
             where :math:`ds` is ``step_size``.
+        filter_near_boundaries: `bool`, optional
+            If True, exclude field lines which come near the boundaries of the
+            extrapolated volume.
 
         Returns
         -------
@@ -207,19 +210,39 @@ class ExtrapolatorBase:
         tracer.trace(seeds.cartesian.xyz.T.to_value(ds_B.x.unit),
                      vg,
                      direction=0)
+        # Check if fieldlines are near domain boundaries
+        if filter_near_boundaries:
+            traced_lines = self._check_near_boundary(tracer.xs)
+        else:
+            traced_lines = tracer.xs
         # Construct fieldlines
         B_total = np.sqrt((ds_B**2).sum(dim='component'))
         B_total.attrs['unit'] = ds_B.unit
-        field_strengths = [self._get_field_strength(sl, B_total) for sl in tracer.xs]
+        field_strengths = [self._get_field_strength(sl, B_total) for sl in traced_lines]
         R_surf = self.tangent_coord.radius.to_value(ds_B.x.unit)
         coords_corrected = [self._correct_field_line_coordinate(sl, R_surf)
-                            for sl in tracer.xs]
+                            for sl in traced_lines]
         coordinates = [SkyCoord(*coord, unit=ds_B.x.unit, frame=self.hcc_frame)
                        for coord in coords_corrected]
         fieldlines = [Fieldline(coordinate=coord, field_strength=fs)
                       for coord, fs in zip(coordinates, field_strengths)]
 
         return fieldlines
+
+    def _check_near_boundary(self, fieldlines):
+        edges = np.array([g[[0,-1]].to_value('Mm') for g in self.grid])
+        # NOTE: This is set to 2 as using a 5-point stencil to compute grad(B) requires
+        # 2 ghost cells near the boundary. Generally speaking, this may vary depending on
+        # the method used, but a value of 2 is fairly safe.
+        n_buffer_cells = 2
+        buffer = (self.scale.to_value('Mm')*n_buffer_cells)[:,np.newaxis]*[1,-1]
+        edges += buffer
+        # NOTE: All points start at the lower boundary
+        edges[2,0] = 0
+        def _out_of_bounds(x):
+            return np.array([[(x[:,i]<edges[i,0]).any(), (x[:,i]>edges[i,1]).any()]
+                             for i in range(3)])
+        return [f for f in fieldlines if not _out_of_bounds(f).any()]
 
     def _get_field_strength(self, coord, field):
         x=xarray.DataArray(coord[:,0], dims='s')
