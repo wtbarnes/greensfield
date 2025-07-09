@@ -16,6 +16,7 @@ authors = [
 ]
 dependencies = [
   "numba",
+  "shapely",
   "sunpy[map]>=6.1",
   "streamtracer",
   "xarray"
