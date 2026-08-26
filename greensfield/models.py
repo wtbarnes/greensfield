@@ -1,6 +1,7 @@
 """
 Models for field extrapolation
 """
+import asdf
 import astropy.units as u
 import dataclasses
 import numpy as np
@@ -75,15 +76,50 @@ class ExtrapolatorBase:
                  corners,
                  resample_factor=1,
                  scale_z=None,
-                 extent_z=None):
+                 extent_z=None,
+                 **kwargs):
         self.magnetogram = magnetogram
         self.tangent_coord = tangent_coord
-        self.boundary_magnetogram = make_boundary_magnetogram(self.magnetogram,
-                                                              self.tangent_coord,
-                                                              corners,
-                                                              resample_factor)
-        self.scale = self._get_scale(scale_z)
-        self.shape = self._get_shape(extent_z)
+        # NOTE: The optional kwargs are mainly for reconstituting from a file
+        if (boundary_magnetogram:=kwargs.get('boundary_magnetogram')) is not None:
+            self.boundary_magnetogram = boundary_magnetogram
+        else:
+            self.boundary_magnetogram = make_boundary_magnetogram(self.magnetogram,
+                                                                  self.tangent_coord,
+                                                                  corners,
+                                                                  resample_factor)
+        self.scale = kwargs.get('scale', self._get_scale(scale_z))
+        self.shape = kwargs.get('shape', self._get_shape(extent_z))
+
+    def to_asdf(self, filename):
+        """
+        Save an instance of an extrapolator to an ASDF file.
+
+        .. note:: This does not save the extrapolated field.
+        """
+        tree = {
+            'magnetogram': self.magnetogram,
+            'tangent_coord': self.tangent_coord,
+            'boundary_magnetogram': self.boundary_magnetogram,
+            'scale': self.scale,
+            'shape': self.shape,
+        }
+        with asdf.AsdfFile(tree) as asdf_file:
+            asdf_file.write_to(filename)
+
+    @classmethod
+    def from_asdf(cls, filename):
+        """
+        Rebuild an instance of an extrapolator from a file.
+        """
+        with asdf.open(filename, mode='r', memmap=False, lazy_load=False) as af:
+            extrapolator = cls(af.tree['magnetogram'],
+                               af.tree['tangent_coord'],
+                               None,
+                               boundary_magnetogram=af.tree['boundary_magnetogram'],
+                               scale=af.tree['scale'],
+                               shape=np.array(af.tree['shape']))
+        return extrapolator
 
     @property
     def tangent_coord(self):

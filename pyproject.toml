@@ -15,6 +15,7 @@ authors = [
   { name = "Will Barnes", email = "will.t.barnes@gmail.com" },
 ]
 dependencies = [
+  "asdf",
   "numba",
   "shapely",
   "sunpy[map]>=6.1",
