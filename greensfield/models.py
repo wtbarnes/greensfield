@@ -140,7 +140,7 @@ class ExtrapolatorBase:
         "Heliocentric cartesian (HCC) coordinate frame"
         return Heliocentric(observer=self.boundary_magnetogram.observer_coordinate)
 
-    @u.quantity_input(sale_z='Mm')
+    @u.quantity_input(scale_z='Mm')
     def _get_scale(self, scale_z=None) -> u.Mm:
         scale = (u.Quantity(self.boundary_magnetogram.scale) * 1*u.pix).to(
             'Mm',
